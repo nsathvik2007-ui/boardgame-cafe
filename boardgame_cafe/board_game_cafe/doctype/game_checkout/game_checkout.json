@@ -1,0 +1,78 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2026-07-07 12:42:44.592159",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "customer_session",
+  "game_copy",
+  "checkout_time",
+  "return_time",
+  "piece_check_status"
+ ],
+ "fields": [
+  {
+   "fieldname": "customer_session",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Customer Session",
+   "options": "Customer Session",
+   "reqd": 1
+  },
+  {
+   "fieldname": "game_copy",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Game Copy",
+   "options": "Game Copy",
+   "reqd": 1
+  },
+  {
+   "fieldname": "checkout_time",
+   "fieldtype": "Datetime",
+   "in_list_view": 1,
+   "label": "Checkout Time",
+   "reqd": 1
+  },
+  {
+   "fieldname": "return_time",
+   "fieldtype": "Datetime",
+   "label": "Return Time"
+  },
+  {
+   "default": "Pending",
+   "fieldname": "piece_check_status",
+   "fieldtype": "Select",
+   "label": "Piece Check Status",
+   "options": "Pending\nVerification Complete\nMissing Pieces"
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-07-07 12:45:00.657406",
+ "modified_by": "Administrator",
+ "module": "Board Game Cafe",
+ "name": "Game Checkout",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

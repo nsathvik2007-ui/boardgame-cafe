@@ -1,0 +1,88 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "field:copy_code",
+ "creation": "2026-07-07 11:58:14.368215",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "game_title",
+  "copy_code",
+  "condition_status",
+  "total_piece_count",
+  "last_verified_datetime",
+  "total_checkouts"
+ ],
+ "fields": [
+  {
+   "fieldname": "game_title",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Game Title",
+   "options": "Game Title",
+   "reqd": 1
+  },
+  {
+   "fieldname": "copy_code",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Copy Code",
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "default": "Available",
+   "fieldname": "condition_status",
+   "fieldtype": "Select",
+   "label": "Condition Status",
+   "options": "Available\nChecked Out\nMissing Pieces\nUnder Repair\nRetired"
+  },
+  {
+   "fieldname": "total_piece_count",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Total Piece Count",
+   "reqd": 1
+  },
+  {
+   "fieldname": "last_verified_datetime",
+   "fieldtype": "Datetime",
+   "label": "Last Verified Datetime"
+  },
+  {
+   "default": "0",
+   "fieldname": "total_checkouts",
+   "fieldtype": "Int",
+   "label": "Total Checkouts",
+   "read_only": 1
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-07-07 12:14:22.485036",
+ "modified_by": "Administrator",
+ "module": "Board Game Cafe",
+ "name": "Game Copy",
+ "naming_rule": "By fieldname",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}
