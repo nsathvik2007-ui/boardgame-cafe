@@ -90,9 +90,17 @@ def customer_signup(email, full_name, password):
     user.insert(ignore_permissions=True)
 
     user.new_password = password
+    api_secret = frappe.generate_hash(length=15)
+    user.api_key = frappe.generate_hash(length=15)
+    user.api_secret = api_secret
     user.save(ignore_permissions=True)
 
-    return {"message": "Signup successful", "user": user.name}
+    return {
+        "message": "Signup successful",
+        "user": user.name,
+        "api_key": user.api_key,
+        "api_secret": api_secret
+    }
 
 @frappe.whitelist()
 def place_food_order(customer_session, items):
@@ -107,3 +115,20 @@ def place_food_order(customer_session, items):
     })
     order.insert()
     return order
+
+@frappe.whitelist(allow_guest=True)
+def customer_login(email, password):
+    from frappe.utils.password import check_password
+
+    try:
+        check_password(email, password)
+    except frappe.AuthenticationError:
+        frappe.throw("Invalid email or password.")
+
+    user = frappe.get_doc("User", email)
+    return {
+        "message": "Login successful",
+        "user": user.name,
+        "api_key": user.api_key,
+        "api_secret": user.get_password("api_secret")
+    }
