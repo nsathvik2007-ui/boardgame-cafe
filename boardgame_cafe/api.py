@@ -31,7 +31,7 @@ def checkin(table):
     return session
 
 
-@frappe.whitelist(allow_guest=True)
+@frappe.whitelist()
 def get_available_games():
     games = frappe.get_all(
         "Game Title",
@@ -73,3 +73,37 @@ def end_session(customer_session):
     frappe.db.set_value("Table", session.table, "status", "Cleaning")
 
     return session
+
+
+@frappe.whitelist(allow_guest=True)
+def customer_signup(email, full_name, password):
+    if frappe.db.exists("User", email):
+        frappe.throw("An account with this email already exists.")
+
+    user = frappe.get_doc({
+        "doctype": "User",
+        "email": email,
+        "first_name": full_name,
+        "send_welcome_email": 0,
+        "user_type": "Website User"
+    })
+    user.insert(ignore_permissions=True)
+
+    user.new_password = password
+    user.save(ignore_permissions=True)
+
+    return {"message": "Signup successful", "user": user.name}
+
+@frappe.whitelist()
+def place_food_order(customer_session, items):
+    if isinstance(items, str):
+        items = frappe.parse_json(items)
+
+    order = frappe.get_doc({
+        "doctype": "Food Order",
+        "customer_session": customer_session,
+        "order_time": now_datetime(),
+        "items": items
+    })
+    order.insert()
+    return order

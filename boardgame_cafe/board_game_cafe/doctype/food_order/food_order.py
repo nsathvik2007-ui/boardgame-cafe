@@ -39,3 +39,14 @@ class FoodOrder(Document):
             total += item.amount
 
         self.total_amount = flt(total)
+
+def get_permission_query_conditions(user):
+    if not user:
+        user = frappe.session.user
+
+    if user == "Administrator":
+        return ""
+
+    return f"""`tabFood Order`.customer_session in (
+        select name from `tabCustomer Session` where customer = '{user}'
+    )"""

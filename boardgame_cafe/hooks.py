@@ -247,3 +247,9 @@ app_license = "mit"
 # List of apps whose translatable strings should be excluded from this app's translations.
 # ignore_translatable_strings_from = []
 
+permission_query_conditions = {
+    "Customer Session": "boardgame_cafe.board_game_cafe.doctype.customer_session.customer_session.get_permission_query_conditions",
+    "Game Checkout": "boardgame_cafe.board_game_cafe.doctype.game_checkout.game_checkout.get_permission_query_conditions",
+    "Food Order": "boardgame_cafe.board_game_cafe.doctype.food_order.food_order.get_permission_query_conditions",
+}
+

@@ -30,3 +30,14 @@ class GameCheckout(Document):
             game_copy.condition_status = "Under Repair"
 
         game_copy.save(ignore_permissions=True)
+
+def get_permission_query_conditions(user):
+    if not user:
+        user = frappe.session.user
+
+    if user == "Administrator":
+        return ""
+
+    return f"""`tabGame Checkout`.customer_session in (
+        select name from `tabCustomer Session` where customer = '{user}'
+    )"""
