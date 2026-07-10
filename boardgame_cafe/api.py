@@ -1,4 +1,11 @@
 import frappe
+import qrcode
+import io
+import base64
+import razorpay
+import hmac
+import hashlib
+
 from frappe.utils import now_datetime
 
 
@@ -38,7 +45,7 @@ def get_available_games():
         fields=[
             "name", "game_name", "category", "min_players",
             "max_players", "avg_play_time_minutes",
-            "complexity_rating", "total_copies_owned"
+            "complexity_rating", "total_copies_owned", "rental_price"
         ]
     )
 
@@ -132,3 +139,103 @@ def customer_login(email, password):
         "api_key": user.api_key,
         "api_secret": user.get_password("api_secret")
     }
+
+
+@frappe.whitelist()
+def get_table_qr(table):
+    table_doc = frappe.get_doc("Table", table)
+    checkin_url = table_doc.checkin_url or f"http://localhost:5173/checkin?table={table_doc.table_number}"
+
+    qr = qrcode.make(checkin_url)
+    buffer = io.BytesIO()
+    qr.save(buffer, format="PNG")
+    img_base64 = base64.b64encode(buffer.getvalue()).decode()
+
+    return {
+        "table_number": table_doc.table_number,
+        "checkin_url": checkin_url,
+        "qr_image_base64": img_base64
+    }
+
+@frappe.whitelist()
+def get_first_available_copy(game_title):
+    copies = frappe.get_all(
+        "Game Copy",
+        filters={"game_title": game_title, "condition_status": "Available"},
+        fields=["name"],
+        limit=1
+    )
+    if not copies:
+        frappe.throw(f"No available copies of {game_title} right now.")
+    return copies[0].name
+
+
+
+def get_razorpay_client():
+    key_id = frappe.conf.get("razorpay_key_id")
+    key_secret = frappe.conf.get("razorpay_key_secret")
+    return razorpay.Client(auth=(key_id, key_secret))
+
+
+@frappe.whitelist()
+def create_payment_order(customer_session):
+    session = frappe.get_doc("Customer Session", customer_session)
+
+    if session.customer != frappe.session.user:
+        frappe.throw("You can only pay for your own session.")
+
+    amount = session.total_bill_amount
+    if not amount or amount <= 0:
+        frappe.throw("Nothing to pay — bill amount is zero.")
+
+    client = get_razorpay_client()
+
+    razorpay_order = client.order.create({
+        "amount": int(amount * 100),
+        "currency": "INR",
+        "receipt": customer_session,
+        "payment_capture": 1
+    })
+
+    payment = frappe.get_doc({
+        "doctype": "Cafe Payment",
+        "customer_session": customer_session,
+        "amount": amount,
+        "razorpay_order_id": razorpay_order["id"],
+        "status": "Created"
+    })
+    payment.insert()
+
+    return {
+        "razorpay_order_id": razorpay_order["id"],
+        "amount": int(amount * 100),
+        "key_id": frappe.conf.get("razorpay_key_id"),
+        "payment_doc": payment.name
+    }
+
+
+@frappe.whitelist()
+def verify_payment(razorpay_order_id, razorpay_payment_id, razorpay_signature):
+    key_secret = frappe.conf.get("razorpay_key_secret")
+
+    generated_signature = hmac.new(
+        key_secret.encode(),
+        f"{razorpay_order_id}|{razorpay_payment_id}".encode(),
+        hashlib.sha256
+    ).hexdigest()
+
+    if generated_signature != razorpay_signature:
+        frappe.throw("Payment verification failed. Signature mismatch.")
+
+    payment = frappe.get_doc("Cafe Payment", {"razorpay_order_id": razorpay_order_id})
+
+    if payment.customer_session:
+        session = frappe.get_doc("Customer Session", payment.customer_session)
+        if session.customer != frappe.session.user:
+            frappe.throw("You can only verify payments for your own session.")
+
+    payment.razorpay_payment_id = razorpay_payment_id
+    payment.status = "Paid"
+    payment.save(ignore_permissions=True)
+
+    return {"status": "success", "message": "Payment verified successfully."}

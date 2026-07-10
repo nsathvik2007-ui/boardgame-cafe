@@ -7,7 +7,6 @@ from frappe.utils import flt, now_datetime
 
 
 class FoodOrder(Document):
-
     def before_insert(self):
         if not self.order_time:
             self.order_time = now_datetime()
@@ -24,7 +23,6 @@ class FoodOrder(Document):
             frappe.throw("Food can only be ordered during an active customer session.")
 
         for item in self.items:
-
             if item.quantity <= 0:
                 frappe.throw("Quantity must be greater than 0.")
 
@@ -39,6 +37,32 @@ class FoodOrder(Document):
             total += item.amount
 
         self.total_amount = flt(total)
+
+    def on_update(self):
+        self.update_session_bill()
+
+    def update_session_bill(self):
+        checkouts = frappe.get_all(
+            "Game Checkout",
+            filters={"customer_session": self.customer_session},
+            fields=["rental_fee"]
+        )
+        game_total = sum(c.rental_fee or 0 for c in checkouts)
+
+        orders = frappe.get_all(
+            "Food Order",
+            filters={"customer_session": self.customer_session},
+            fields=["total_amount"]
+        )
+        food_total = sum(o.total_amount or 0 for o in orders)
+
+        frappe.db.set_value(
+            "Customer Session",
+            self.customer_session,
+            "total_bill_amount",
+            game_total + food_total
+        )
+
 
 def get_permission_query_conditions(user):
     if not user:

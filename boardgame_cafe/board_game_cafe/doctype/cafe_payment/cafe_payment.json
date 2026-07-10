@@ -1,16 +1,15 @@
 {
  "actions": [],
  "allow_rename": 1,
- "creation": "2026-07-07 12:42:44.592159",
+ "creation": "2026-07-10 11:36:55.962974",
  "doctype": "DocType",
  "engine": "InnoDB",
  "field_order": [
   "customer_session",
-  "game_copy",
-  "checkout_time",
-  "return_time",
-  "piece_check_status",
-  "rental_fee"
+  "amount",
+  "razorpay_order_id",
+  "razorpay_payment_id",
+  "status"
  ],
  "fields": [
   {
@@ -22,46 +21,37 @@
    "reqd": 1
   },
   {
-   "fieldname": "game_copy",
-   "fieldtype": "Link",
-   "in_list_view": 1,
-   "label": "Game Copy",
-   "options": "Game Copy",
-   "reqd": 1
-  },
-  {
-   "fieldname": "checkout_time",
-   "fieldtype": "Datetime",
-   "in_list_view": 1,
-   "label": "Checkout Time",
-   "reqd": 1
-  },
-  {
-   "fieldname": "return_time",
-   "fieldtype": "Datetime",
-   "label": "Return Time"
-  },
-  {
-   "default": "Pending",
-   "fieldname": "piece_check_status",
-   "fieldtype": "Select",
-   "label": "Piece Check Status",
-   "options": "Pending\nVerification Complete\nMissing Pieces"
-  },
-  {
-   "fieldname": "rental_fee",
+   "fieldname": "amount",
    "fieldtype": "Currency",
-   "label": "Rental Fee",
-   "read_only": 1
+   "in_list_view": 1,
+   "label": "Amount",
+   "reqd": 1
+  },
+  {
+   "fieldname": "razorpay_order_id",
+   "fieldtype": "Data",
+   "label": "Razorpay Order ID"
+  },
+  {
+   "fieldname": "razorpay_payment_id",
+   "fieldtype": "Data",
+   "label": "Razorpay Payment ID"
+  },
+  {
+   "default": "Created",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "label": "Status",
+   "options": "Created\nPaid\nFailed"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-07-09 12:39:45.306323",
+ "modified": "2026-07-10 11:38:42.318662",
  "modified_by": "Administrator",
  "module": "Board Game Cafe",
- "name": "Game Checkout",
+ "name": "Cafe Payment",
  "owner": "Administrator",
  "permissions": [
   {

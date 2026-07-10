@@ -12,7 +12,8 @@
   "max_players",
   "avg_play_time_minutes",
   "complexity_rating",
-  "total_copies_owned"
+  "total_copies_owned",
+  "rental_price"
  ],
  "fields": [
   {
@@ -55,12 +56,19 @@
    "fieldtype": "Int",
    "label": "Total Copies Owned",
    "read_only": 1
+  },
+  {
+   "fieldname": "rental_price",
+   "fieldtype": "Currency",
+   "label": "Rental Price",
+   "non_negative": 1,
+   "reqd": 1
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-07-07 13:02:31.280461",
+ "modified": "2026-07-09 12:39:01.590922",
  "modified_by": "Administrator",
  "module": "Board Game Cafe",
  "name": "Game Title",

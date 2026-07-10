@@ -251,5 +251,6 @@ permission_query_conditions = {
     "Customer Session": "boardgame_cafe.board_game_cafe.doctype.customer_session.customer_session.get_permission_query_conditions",
     "Game Checkout": "boardgame_cafe.board_game_cafe.doctype.game_checkout.game_checkout.get_permission_query_conditions",
     "Food Order": "boardgame_cafe.board_game_cafe.doctype.food_order.food_order.get_permission_query_conditions",
+    "Cafe Payment": "boardgame_cafe.board_game_cafe.doctype.cafe_payment.cafe_payment.get_permission_query_conditions",
 }
 
