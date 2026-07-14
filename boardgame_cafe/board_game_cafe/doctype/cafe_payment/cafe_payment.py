@@ -14,7 +14,8 @@ def get_permission_query_conditions(user):
 
     if user == "Administrator":
         return ""
-
+    if "Cafe Staff" in frappe.get_roles(user):
+        return ""
     return f"""`tabCafe Payment`.customer_session in (
         select name from `tabCustomer Session` where customer = '{user}'
     )"""

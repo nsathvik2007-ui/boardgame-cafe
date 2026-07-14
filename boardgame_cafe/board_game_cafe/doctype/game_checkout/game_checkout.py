@@ -48,3 +48,18 @@ class GameCheckout(Document):
         food_total = sum(o.total_amount or 0 for o in orders)
 
         frappe.db.set_value("Customer Session", self.customer_session, "total_bill_amount", game_total + food_total)
+
+
+def get_permission_query_conditions(user):
+    if not user:
+        user = frappe.session.user
+
+    if user == "Administrator":
+        return ""
+
+    if "Cafe Staff" in frappe.get_roles(user):
+        return ""
+
+    return f"""`tabGame Checkout`.customer_session in (
+        select name from `tabCustomer Session` where customer = '{user}'
+    )"""

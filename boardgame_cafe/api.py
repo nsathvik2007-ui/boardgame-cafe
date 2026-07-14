@@ -30,6 +30,7 @@ def checkin(table):
         "party_size": 1,  # default, customer can update later
         "status": "Active"
     })
+    
     session.insert(ignore_permissions=True)
 
     # Also flip the table's status
@@ -94,6 +95,7 @@ def customer_signup(email, full_name, password):
         "send_welcome_email": 0,
         "user_type": "Website User"
     })
+    user.append("roles", {"role": "Customer"})
     user.insert(ignore_permissions=True)
 
     user.new_password = password
@@ -239,3 +241,98 @@ def verify_payment(razorpay_order_id, razorpay_payment_id, razorpay_signature):
     payment.save(ignore_permissions=True)
 
     return {"status": "success", "message": "Payment verified successfully."}
+
+
+def require_staff():
+    if frappe.session.user == "Administrator":
+        return
+    roles = frappe.get_roles(frappe.session.user)
+    if "Cafe Staff" not in roles:
+        frappe.throw("Staff access required.", frappe.PermissionError)
+
+
+@frappe.whitelist()
+def get_dashboard_overview():
+    require_staff()
+
+    tables = frappe.get_all(
+        "Table",
+        fields=["name", "table_number", "zonelocation", "seating_capacity", "status"]
+    )
+
+    for table in tables:
+        session = frappe.get_all(
+            "Customer Session",
+            filters={"table": table.name, "status": "Active"},
+            fields=["name", "customer", "party_size", "checkin_time", "total_bill_amount"],
+            limit=1
+        )
+        table["active_session"] = session[0] if session else None
+
+        if session:
+            payment = frappe.get_all(
+                "Cafe Payment",
+                filters={"customer_session": session[0].name, "status": "Paid"},
+                fields=["name"],
+                limit=1
+            )
+            table["is_paid"] = bool(payment)
+        else:
+            table["is_paid"] = None
+
+    return tables
+
+
+@frappe.whitelist()
+def mark_table_free(table):
+    require_staff()
+
+    active = frappe.get_all(
+        "Customer Session",
+        filters={"table": table, "status": "Active"},
+        fields=["name"]
+    )
+    if active:
+        frappe.throw("Cannot free a table with an active session. End the session first.")
+
+    frappe.db.set_value("Table", table, "status", "Free")
+    return {"message": f"Table {table} marked as Free."}
+
+
+@frappe.whitelist()
+def force_end_session(customer_session):
+    require_staff()
+
+    session = frappe.get_doc("Customer Session", customer_session)
+    session.check_out_time = frappe.utils.now_datetime()
+    session.status = "Completed"
+    session.save(ignore_permissions=True)
+
+    frappe.db.set_value("Table", session.table, "status", "Cleaning")
+
+    return {"message": "Session ended by staff.", "session": session.name}
+
+
+@frappe.whitelist()
+def get_unpaid_sessions():
+    require_staff()
+
+    completed = frappe.get_all(
+        "Customer Session",
+        filters={"status": "Completed"},
+        fields=["name", "customer", "table", "total_bill_amount"]
+    )
+
+    unpaid = []
+    for s in completed:
+        if not s.total_bill_amount:
+            continue
+        payment = frappe.get_all(
+            "Cafe Payment",
+            filters={"customer_session": s.name, "status": "Paid"},
+            fields=["name"]
+        )
+        if not payment:
+            unpaid.append(s)
+
+    return unpaid
