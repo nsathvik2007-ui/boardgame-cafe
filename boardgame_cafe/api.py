@@ -74,13 +74,15 @@ def checkout_game(customer_session, game_copy):
 @frappe.whitelist()
 def end_session(customer_session):
     session = frappe.get_doc("Customer Session", customer_session)
-    session.check_out_time = now_datetime()
+    session.checkout_time = now_datetime()
     session.status = "Completed"
     session.save()
 
     frappe.db.set_value("Table", session.table, "status", "Cleaning")
 
-    return session
+    invoice = session.generate_sales_invoice()
+
+    return {"session": session.name, "sales_invoice": invoice}
 
 
 @frappe.whitelist(allow_guest=True)
@@ -103,12 +105,23 @@ def customer_signup(email, full_name, password):
     user.api_key = frappe.generate_hash(length=15)
     user.api_secret = api_secret
     user.save(ignore_permissions=True)
+    customer = frappe.get_doc({
+        "doctype": "Customer",
+        "customer_name": full_name,
+        "customer_type": "Individual",
+        "customer_group": "Individual",
+        "territory": "India"
+    })
+    customer.insert(ignore_permissions=True)
+
+    user.db_set("custom_erpnext_customer", customer.name)
 
     return {
         "message": "Signup successful",
         "user": user.name,
         "api_key": user.api_key,
-        "api_secret": api_secret
+        "api_secret": api_secret,
+        "erpnext_customer": customer.name
     }
 
 @frappe.whitelist()
@@ -304,13 +317,15 @@ def force_end_session(customer_session):
     require_staff()
 
     session = frappe.get_doc("Customer Session", customer_session)
-    session.check_out_time = frappe.utils.now_datetime()
+    session.checkout_time = frappe.utils.now_datetime()
     session.status = "Completed"
     session.save(ignore_permissions=True)
 
     frappe.db.set_value("Table", session.table, "status", "Cleaning")
 
-    return {"message": "Session ended by staff.", "session": session.name}
+    invoice = session.generate_sales_invoice()
+
+    return {"message": "Session ended by staff.", "session": session.name, "sales_invoice": invoice}
 
 
 @frappe.whitelist()
@@ -336,3 +351,13 @@ def get_unpaid_sessions():
             unpaid.append(s)
 
     return unpaid
+
+@frappe.whitelist()
+def return_game(game_checkout, piece_check_status="Verification Complete"):
+    require_staff()
+
+    checkout = frappe.get_doc("Game Checkout", game_checkout)
+    checkout.return_time = now_datetime()
+    checkout.piece_check_status = piece_check_status
+    checkout.save(ignore_permissions=True)
+    return checkout

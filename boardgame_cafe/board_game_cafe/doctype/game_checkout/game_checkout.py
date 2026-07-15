@@ -26,7 +26,11 @@ class GameCheckout(Document):
         if not self.return_time:
             game_copy.condition_status = "Checked Out"
             game_copy.total_checkouts = (game_copy.total_checkouts or 0) + 1
-        elif self.return_time and self.piece_check_status == "Pending":
+        elif self.piece_check_status == "Missing Pieces":
+            game_copy.condition_status = "Missing Pieces"
+        elif self.piece_check_status == "Verification Complete":
+            game_copy.condition_status = "Available"
+        else:
             game_copy.condition_status = "Under Repair"
 
         game_copy.save(ignore_permissions=True)

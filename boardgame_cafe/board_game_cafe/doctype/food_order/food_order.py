@@ -63,6 +63,42 @@ class FoodOrder(Document):
             game_total + food_total
         )
 
+    def after_insert(self):
+        self.deduct_stock()
+
+    def deduct_stock(self):
+        entries = []
+        for row in self.items:
+            menu = frappe.get_doc("Menu Item", row.menu_item)
+            if not menu.erpnext_item:
+                continue
+
+            item = frappe.get_doc("Item", menu.erpnext_item)
+            warehouse = item.item_defaults[0].default_warehouse if item.item_defaults else None
+            if not warehouse:
+                continue
+
+            entries.append({
+                "item_code": item.name,
+                "qty": row.quantity,
+                "uom": item.stock_uom,
+                "stock_uom": item.stock_uom,
+                "conversion_factor": 1,
+                "s_warehouse": warehouse,
+            })
+
+        if not entries:
+            return
+
+        stock_entry = frappe.get_doc({
+            "doctype": "Stock Entry",
+            "stock_entry_type": "Material Issue",
+            "company": frappe.db.get_single_value("Global Defaults", "default_company"),
+            "items": entries,
+        })
+        stock_entry.insert(ignore_permissions=True)
+        stock_entry.submit()
+
 
 def get_permission_query_conditions(user):
     if not user:

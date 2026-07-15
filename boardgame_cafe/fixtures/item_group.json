@@ -1,0 +1,16 @@
+[
+ {
+  "doctype": "Item Group",
+  "name": "Board Games",
+  "item_group_name": "Board Games",
+  "parent_item_group": "All Item Groups",
+  "is_group": 0
+ },
+ {
+  "doctype": "Item Group",
+  "name": "Food & Beverage",
+  "item_group_name": "Food & Beverage",
+  "parent_item_group": "All Item Groups",
+  "is_group": 0
+ }
+]

@@ -1,0 +1,13 @@
+[
+ {
+  "doctype": "Custom Field",
+  "name": "User-custom_erpnext_customer",
+  "dt": "User",
+  "fieldname": "custom_erpnext_customer",
+  "label": "ERPNext Customer",
+  "fieldtype": "Link",
+  "options": "Customer",
+  "insert_after": "user_type",
+  "read_only": 1
+ }
+]

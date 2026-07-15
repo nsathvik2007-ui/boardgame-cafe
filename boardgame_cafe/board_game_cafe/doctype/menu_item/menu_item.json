@@ -9,7 +9,8 @@
   "item_name",
   "category",
   "price",
-  "is_available"
+  "is_available",
+  "erpnext_item"
  ],
  "fields": [
   {
@@ -38,6 +39,13 @@
    "fieldname": "is_available",
    "fieldtype": "Check",
    "label": "Is Available"
+  },
+  {
+   "fieldname": "erpnext_item",
+   "fieldtype": "Link",
+   "label": "ERPNext Item",
+   "options": "Item",
+   "read_only": 1
   }
  ],
  "grid_page_length": 50,
@@ -61,7 +69,15 @@
    "role": "System Manager",
    "share": 1,
    "write": 1
-  }
+  },
+  {
+ "create": 1, "delete": 0, "email": 0, "export": 0, "print": 0,
+ "read": 1, "report": 0, "role": "Cafe Staff", "share": 0, "write": 1
+},
+{
+ "create": 0, "delete": 0, "email": 0, "export": 0, "print": 0,
+ "read": 1, "report": 0, "role": "Customer", "share": 0, "write": 0
+}
  ],
  "row_format": "Dynamic",
  "rows_threshold_for_grid_search": 20,

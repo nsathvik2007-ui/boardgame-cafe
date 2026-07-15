@@ -8,7 +8,7 @@ app_license = "mit"
 # Apps
 # ------------------
 
-# required_apps = []
+required_apps = ["erpnext"]
 
 # Each item in the list will be shown as an app in the apps page
 # add_to_apps_screen = [
@@ -253,4 +253,8 @@ permission_query_conditions = {
     "Food Order": "boardgame_cafe.board_game_cafe.doctype.food_order.food_order.get_permission_query_conditions",
     "Cafe Payment": "boardgame_cafe.board_game_cafe.doctype.cafe_payment.cafe_payment.get_permission_query_conditions",
 }
-
+fixtures = [
+    {"doctype": "Role", "filters": [["name", "in", ["Cafe Staff", "Customer"]]]},
+    {"doctype": "Custom Field", "filters": [["name", "in", ["User-custom_erpnext_customer"]]]},
+    {"doctype": "Item Group", "filters": [["name", "in", ["Board Games", "Food & Beverage"]]]}
+]
