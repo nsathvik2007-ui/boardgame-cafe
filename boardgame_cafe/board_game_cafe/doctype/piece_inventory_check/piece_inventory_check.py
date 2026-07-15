@@ -23,5 +23,5 @@ class PieceInventoryCheck(Document):
         else:
             game_copy.condition_status = "Missing Pieces"
 
-        game_copy.last_verified_on = self.check_date
+        game_copy.last_verified_datetime = self.check_date
         game_copy.save(ignore_permissions=True)

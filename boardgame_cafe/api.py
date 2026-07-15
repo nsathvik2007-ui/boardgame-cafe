@@ -61,7 +61,20 @@ def get_available_games():
 
 
 @frappe.whitelist()
+def get_menu():
+    return frappe.get_all(
+        "Menu Item",
+        filters={"is_available": 1},
+        fields=["name", "item_name", "category", "price"]
+    )
+
+
+@frappe.whitelist()
 def checkout_game(customer_session, game_copy):
+    session = frappe.get_doc("Customer Session", customer_session)
+    if session.customer != frappe.session.user:
+        frappe.throw("You can only check out games for your own session.")
+
     checkout = frappe.get_doc({
         "doctype": "Game Checkout",
         "customer_session": customer_session,
@@ -72,8 +85,21 @@ def checkout_game(customer_session, game_copy):
     return checkout
 
 @frappe.whitelist()
+def update_party_size(customer_session, party_size):
+    session = frappe.get_doc("Customer Session", customer_session)
+    if session.customer != frappe.session.user:
+        frappe.throw("You can only update your own session.")
+
+    session.party_size = party_size
+    session.save()
+    return session
+
+@frappe.whitelist()
 def end_session(customer_session):
     session = frappe.get_doc("Customer Session", customer_session)
+    if session.customer != frappe.session.user:
+        frappe.throw("You can only end your own session.")
+
     session.checkout_time = now_datetime()
     session.status = "Completed"
     session.save()
@@ -126,6 +152,13 @@ def customer_signup(email, full_name, password):
 
 @frappe.whitelist()
 def place_food_order(customer_session, items):
+    session = frappe.get_doc("Customer Session", customer_session)
+    if session.customer != frappe.session.user:
+        frappe.throw("You can only order food for your own session.")
+
+    if session.status != "Active":
+        frappe.throw("Food can only be ordered during an active customer session.")
+
     if isinstance(items, str):
         items = frappe.parse_json(items)
 
@@ -136,6 +169,57 @@ def place_food_order(customer_session, items):
         "items": items
     })
     order.insert()
+    return order
+
+@frappe.whitelist()
+def edit_food_order(food_order, items):
+    order = frappe.get_doc("Food Order", food_order)
+    session = frappe.get_doc("Customer Session", order.customer_session)
+
+    is_staff = frappe.session.user == "Administrator" or "Cafe Staff" in frappe.get_roles(frappe.session.user)
+    if not is_staff and session.customer != frappe.session.user:
+        frappe.throw("You can only edit your own order.")
+
+    if order.status != "Placed":
+        frappe.throw("This order can no longer be edited — it's already being prepared.")
+
+    if session.status != "Active":
+        frappe.throw("This order can no longer be edited — the session has ended.")
+
+    if isinstance(items, str):
+        items = frappe.parse_json(items)
+
+    old_qty = {}
+    for row in order.items:
+        old_qty[row.menu_item] = old_qty.get(row.menu_item, 0) + row.quantity
+
+    new_qty = {}
+    for row in items:
+        new_qty[row["menu_item"]] = new_qty.get(row["menu_item"], 0) + row["quantity"]
+
+    order.items = []
+    for row in items:
+        order.append("items", row)
+    order.save()
+
+    order.adjust_stock_for_edit(old_qty, new_qty)
+    return order
+
+@frappe.whitelist()
+def cancel_food_order(food_order):
+    order = frappe.get_doc("Food Order", food_order)
+    session = frappe.get_doc("Customer Session", order.customer_session)
+
+    is_staff = frappe.session.user == "Administrator" or "Cafe Staff" in frappe.get_roles(frappe.session.user)
+    if not is_staff and session.customer != frappe.session.user:
+        frappe.throw("You can only cancel your own order.")
+
+    if order.status != "Placed":
+        frappe.throw("This order can no longer be cancelled — it's already being prepared.")
+
+    order.restore_stock()
+    order.status = "Cancelled"
+    order.save()
     return order
 
 @frappe.whitelist(allow_guest=True)
@@ -152,8 +236,27 @@ def customer_login(email, password):
         "message": "Login successful",
         "user": user.name,
         "api_key": user.api_key,
-        "api_secret": user.get_password("api_secret")
+        "api_secret": user.get_password("api_secret"),
+        "roles": frappe.get_roles(user.name)
     }
+
+
+@frappe.whitelist()
+def get_my_profile():
+    user = frappe.get_doc("User", frappe.session.user)
+    return {
+        "email": user.name,
+        "full_name": user.full_name,
+        "erpnext_customer": user.custom_erpnext_customer
+    }
+
+
+@frappe.whitelist()
+def update_my_profile(full_name):
+    user = frappe.get_doc("User", frappe.session.user)
+    user.first_name = full_name
+    user.save(ignore_permissions=True)
+    return {"message": "Profile updated", "full_name": user.full_name}
 
 
 @frappe.whitelist()
@@ -206,7 +309,7 @@ def create_payment_order(customer_session):
     client = get_razorpay_client()
 
     razorpay_order = client.order.create({
-        "amount": int(amount * 100),
+        "amount": round(amount * 100),
         "currency": "INR",
         "receipt": customer_session,
         "payment_capture": 1
@@ -223,7 +326,7 @@ def create_payment_order(customer_session):
 
     return {
         "razorpay_order_id": razorpay_order["id"],
-        "amount": int(amount * 100),
+        "amount": round(amount * 100),
         "key_id": frappe.conf.get("razorpay_key_id"),
         "payment_doc": payment.name
     }
@@ -361,3 +464,108 @@ def return_game(game_checkout, piece_check_status="Verification Complete"):
     checkout.piece_check_status = piece_check_status
     checkout.save(ignore_permissions=True)
     return checkout
+
+@frappe.whitelist()
+def get_kitchen_queue():
+    require_staff()
+
+    orders = frappe.get_all(
+        "Food Order",
+        filters={"status": ["not in", ["Served", "Cancelled"]]},
+        fields=["name", "customer_session", "order_time", "status", "total_amount"],
+        order_by="order_time asc"
+    )
+
+    for order in orders:
+        order["items"] = frappe.get_all(
+            "Food Order Item",
+            filters={"parent": order.name},
+            fields=["menu_item", "quantity"]
+        )
+        order["table"] = frappe.db.get_value("Customer Session", order.customer_session, "table")
+
+    return orders
+
+
+@frappe.whitelist()
+def update_food_order_status(food_order, status):
+    require_staff()
+
+    if status not in ("Placed", "Preparing", "Served"):
+        frappe.throw("Invalid status. Use cancel_food_order to cancel an order.")
+
+    order = frappe.get_doc("Food Order", food_order)
+    order.status = status
+    order.save(ignore_permissions=True)
+    return order
+
+
+@frappe.whitelist()
+def get_invoice(customer_session):
+    session = frappe.get_doc("Customer Session", customer_session)
+
+    is_staff = frappe.session.user == "Administrator" or "Cafe Staff" in frappe.get_roles(frappe.session.user)
+    if not is_staff and session.customer != frappe.session.user:
+        frappe.throw("You can only view your own invoice.")
+
+    if not session.sales_invoice:
+        frappe.throw("No invoice has been generated for this session yet.")
+
+    current_user = frappe.session.user
+    frappe.set_user("Administrator")
+    try:
+        invoice = frappe.get_doc("Sales Invoice", session.sales_invoice)
+        data = {
+            "name": invoice.name,
+            "customer": invoice.customer,
+            "posting_date": str(invoice.posting_date),
+            "grand_total": invoice.grand_total,
+            "status": invoice.status,
+            "items": [
+                {"item_code": i.item_code, "item_name": i.item_name, "qty": i.qty, "rate": i.rate, "amount": i.amount}
+                for i in invoice.items
+            ],
+        }
+    finally:
+        frappe.set_user(current_user)
+
+    return data
+
+
+@frappe.whitelist()
+def get_session_summary(customer_session):
+    session = frappe.get_doc("Customer Session", customer_session)
+
+    is_staff = frappe.session.user == "Administrator" or "Cafe Staff" in frappe.get_roles(frappe.session.user)
+    if not is_staff and session.customer != frappe.session.user:
+        frappe.throw("You can only view your own session.")
+
+    checkouts = frappe.get_all(
+        "Game Checkout",
+        filters={"customer_session": customer_session},
+        fields=["name", "game_copy", "checkout_time", "return_time", "rental_fee"]
+    )
+    for c in checkouts:
+        c["game_title"] = frappe.db.get_value("Game Copy", c.game_copy, "game_title")
+
+    orders = frappe.get_all(
+        "Food Order",
+        filters={"customer_session": customer_session},
+        fields=["name", "order_time", "status", "total_amount"]
+    )
+    for o in orders:
+        o["items"] = frappe.get_all(
+            "Food Order Item",
+            filters={"parent": o.name},
+            fields=["menu_item", "quantity", "rate", "amount"]
+        )
+
+    return {
+        "session": session.name,
+        "table": session.table,
+        "status": session.status,
+        "party_size": session.party_size,
+        "total_bill_amount": session.total_bill_amount,
+        "game_checkouts": checkouts,
+        "food_orders": orders
+    }

@@ -3,7 +3,7 @@ from frappe.model.document import Document
 
 
 class GameCopy(Document):
-	def after_insert(self):
+	def on_update(self):
 		self.sync_stock_count()
 	
 	def sync_stock_count(self):
@@ -16,7 +16,10 @@ class GameCopy(Document):
 		if not warehouse:
 			return
 
-		copy_count = frappe.db.count("Game Copy", {"game_title": self.game_title})
+		copy_count = frappe.db.count(
+			"Game Copy",
+			{"game_title": self.game_title, "condition_status": ["!=", "Retired"]}
+		)
 
 		from erpnext.stock.utils import get_stock_balance
 		current_qty = get_stock_balance(item.name, warehouse)
