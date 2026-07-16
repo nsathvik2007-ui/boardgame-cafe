@@ -56,6 +56,21 @@ class CustomerSession(Document):
 			})
 			invoice.insert(ignore_permissions=True)
 			invoice.submit()
+
+			payment = frappe.get_all(
+				"Cafe Payment",
+				filters={"customer_session": self.name, "status": "Paid"},
+				fields=["name", "razorpay_payment_id"],
+				limit=1,
+			)
+			if payment:
+				from erpnext.accounts.doctype.payment_entry.payment_entry import get_payment_entry
+
+				pe = get_payment_entry("Sales Invoice", invoice.name)
+				pe.reference_no = payment[0].razorpay_payment_id or payment[0].name
+				pe.reference_date = frappe.utils.today()
+				pe.insert(ignore_permissions=True)
+				pe.submit()
 		finally:
 			frappe.set_user(current_user)
 

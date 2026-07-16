@@ -6,7 +6,7 @@ import razorpay
 import hmac
 import hashlib
 
-from frappe.utils import now_datetime
+from frappe.utils import now_datetime, flt
 
 
 @frappe.whitelist()
@@ -15,11 +15,13 @@ def checkin(table):
     existing = frappe.get_all(
         "Customer Session",
         filters={"table": table, "status": "Active"},
-        fields=["name"]
+        fields=["name", "customer"]
     )
 
     if existing:
-        return frappe.get_doc("Customer Session", existing[0].name)
+        if existing[0].customer == frappe.session.user:
+            return frappe.get_doc("Customer Session", existing[0].name)
+        frappe.throw("This table is currently occupied. Please ask staff for help.")
 
     # Otherwise create a new session for the logged-in user
     session = frappe.get_doc({
@@ -261,6 +263,8 @@ def update_my_profile(full_name):
 
 @frappe.whitelist()
 def get_table_qr(table):
+    require_staff()
+
     table_doc = frappe.get_doc("Table", table)
     checkin_url = table_doc.checkin_url or f"http://localhost:5173/checkin?table={table_doc.table_number}"
 
@@ -301,6 +305,14 @@ def create_payment_order(customer_session):
 
     if session.customer != frappe.session.user:
         frappe.throw("You can only pay for your own session.")
+
+    already_paid = frappe.get_all(
+        "Cafe Payment",
+        filters={"customer_session": customer_session, "status": "Paid"},
+        limit=1
+    )
+    if already_paid:
+        frappe.throw("This session has already been paid.")
 
     amount = session.total_bill_amount
     if not amount or amount <= 0:
@@ -347,10 +359,25 @@ def verify_payment(razorpay_order_id, razorpay_payment_id, razorpay_signature):
 
     payment = frappe.get_doc("Cafe Payment", {"razorpay_order_id": razorpay_order_id})
 
+    if payment.status == "Paid":
+        return {"status": "success", "message": "Payment already verified."}
+
     if payment.customer_session:
         session = frappe.get_doc("Customer Session", payment.customer_session)
         if session.customer != frappe.session.user:
             frappe.throw("You can only verify payments for your own session.")
+
+        other_paid = frappe.get_all(
+            "Cafe Payment",
+            filters={
+                "customer_session": payment.customer_session,
+                "status": "Paid",
+                "name": ["!=", payment.name],
+            },
+            limit=1
+        )
+        if other_paid:
+            frappe.throw("This session has already been paid via a different transaction.")
 
     payment.razorpay_payment_id = razorpay_payment_id
     payment.status = "Paid"
@@ -464,6 +491,114 @@ def return_game(game_checkout, piece_check_status="Verification Complete"):
     checkout.piece_check_status = piece_check_status
     checkout.save(ignore_permissions=True)
     return checkout
+
+
+@frappe.whitelist()
+def get_checked_out_games():
+    require_staff()
+
+    checkouts = frappe.get_all(
+        "Game Checkout",
+        filters={"return_time": ["is", "not set"]},
+        fields=["name", "game_copy", "customer_session", "checkout_time", "rental_fee"],
+        order_by="checkout_time asc"
+    )
+
+    for c in checkouts:
+        game_copy = frappe.get_doc("Game Copy", c.game_copy)
+        c["copy_code"] = game_copy.copy_code
+        c["game_title"] = game_copy.game_title
+        c["condition_status"] = game_copy.condition_status
+
+        session = frappe.get_doc("Customer Session", c.customer_session)
+        c["table"] = session.table
+        c["customer"] = session.customer
+
+    return checkouts
+
+@frappe.whitelist()
+def get_food_inventory():
+    require_staff()
+
+    from erpnext.stock.utils import get_stock_balance
+
+    menu_items = frappe.get_all(
+        "Menu Item",
+        fields=["name", "item_name", "category", "price", "is_available", "erpnext_item"]
+    )
+
+    current_user = frappe.session.user
+    frappe.set_user("Administrator")
+    try:
+        for mi in menu_items:
+            mi["stock_qty"] = None
+            if not mi.erpnext_item:
+                continue
+
+            item = frappe.get_doc("Item", mi.erpnext_item)
+            warehouse = item.item_defaults[0].default_warehouse if item.item_defaults else None
+            if not warehouse:
+                continue
+
+            mi["stock_qty"] = get_stock_balance(item.name, warehouse)
+    finally:
+        frappe.set_user(current_user)
+
+    return menu_items
+
+
+@frappe.whitelist()
+def restock_menu_item(menu_item, qty):
+    require_staff()
+
+    qty = flt(qty)
+    if qty <= 0:
+        frappe.throw("Restock quantity must be greater than 0.")
+
+    menu = frappe.get_doc("Menu Item", menu_item)
+    if not menu.erpnext_item:
+        frappe.throw("This item isn't linked to inventory tracking.")
+
+    current_user = frappe.session.user
+    frappe.set_user("Administrator")
+    try:
+        from erpnext.stock.utils import get_stock_balance
+
+        item = frappe.get_doc("Item", menu.erpnext_item)
+        warehouse = item.item_defaults[0].default_warehouse if item.item_defaults else None
+        if not warehouse:
+            frappe.throw("No default warehouse configured for this item.")
+
+        new_qty = get_stock_balance(item.name, warehouse) + qty
+
+        company = frappe.db.get_single_value("Global Defaults", "default_company")
+        expense_account = frappe.db.get_value(
+            "Account", {"company": company, "account_type": "Temporary", "is_group": 0}, "name"
+        )
+
+        reconciliation = frappe.get_doc({
+            "doctype": "Stock Reconciliation",
+            "purpose": "Stock Reconciliation",
+            "company": company,
+            "expense_account": expense_account,
+            "posting_date": frappe.utils.nowdate(),
+            "posting_time": frappe.utils.nowtime(),
+            "items": [{
+                "item_code": item.name,
+                "warehouse": warehouse,
+                "qty": new_qty,
+                "valuation_rate": menu.price,
+            }],
+        })
+        reconciliation.insert(ignore_permissions=True)
+        reconciliation.submit()
+
+        final_qty = get_stock_balance(item.name, warehouse)
+    finally:
+        frappe.set_user(current_user)
+
+    return {"stock_qty": final_qty}
+
 
 @frappe.whitelist()
 def get_kitchen_queue():

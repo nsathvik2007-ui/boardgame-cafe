@@ -4,8 +4,13 @@ from frappe.model.document import Document
 
 class GameCopy(Document):
 	def on_update(self):
-		self.sync_stock_count()
-	
+		current_user = frappe.session.user
+		frappe.set_user("Administrator")
+		try:
+			self.sync_stock_count()
+		finally:
+			frappe.set_user(current_user)
+
 	def sync_stock_count(self):
 		game_title = frappe.get_doc("Game Title", self.game_title)
 		if not game_title.erpnext_item:
