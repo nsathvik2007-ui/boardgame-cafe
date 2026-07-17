@@ -5,6 +5,7 @@ import base64
 import razorpay
 import hmac
 import hashlib
+import json
 
 from frappe.utils import now_datetime, flt
 
@@ -266,7 +267,8 @@ def get_table_qr(table):
     require_staff()
 
     table_doc = frappe.get_doc("Table", table)
-    checkin_url = table_doc.checkin_url or f"http://localhost:5173/checkin?table={table_doc.table_number}"
+    frontend_url = frappe.conf.get("frontend_url", "http://localhost:5173")
+    checkin_url = table_doc.checkin_url or f"{frontend_url}/checkin?table={table_doc.table_number}"
 
     qr = qrcode.make(checkin_url)
     buffer = io.BytesIO()
@@ -344,29 +346,20 @@ def create_payment_order(customer_session):
     }
 
 
-@frappe.whitelist()
-def verify_payment(razorpay_order_id, razorpay_payment_id, razorpay_signature):
-    key_secret = frappe.conf.get("razorpay_key_secret")
+def _finalize_payment(razorpay_order_id, razorpay_payment_id):
+    """Marks the Cafe Payment for this order as Paid, idempotently.
 
-    generated_signature = hmac.new(
-        key_secret.encode(),
-        f"{razorpay_order_id}|{razorpay_payment_id}".encode(),
-        hashlib.sha256
-    ).hexdigest()
-
-    if generated_signature != razorpay_signature:
-        frappe.throw("Payment verification failed. Signature mismatch.")
-
+    Shared by the client-triggered verify_payment (fast path — updates the UI
+    the moment checkout.js reports success) and the Razorpay webhook (safety
+    net — fires server-to-server, so it still lands even if the customer's
+    browser dies before it can call verify_payment itself).
+    """
     payment = frappe.get_doc("Cafe Payment", {"razorpay_order_id": razorpay_order_id})
 
     if payment.status == "Paid":
-        return {"status": "success", "message": "Payment already verified."}
+        return payment
 
     if payment.customer_session:
-        session = frappe.get_doc("Customer Session", payment.customer_session)
-        if session.customer != frappe.session.user:
-            frappe.throw("You can only verify payments for your own session.")
-
         other_paid = frappe.get_all(
             "Cafe Payment",
             filters={
@@ -377,13 +370,78 @@ def verify_payment(razorpay_order_id, razorpay_payment_id, razorpay_signature):
             limit=1
         )
         if other_paid:
-            frappe.throw("This session has already been paid via a different transaction.")
+            return payment
 
     payment.razorpay_payment_id = razorpay_payment_id
     payment.status = "Paid"
     payment.save(ignore_permissions=True)
+    return payment
+
+
+@frappe.whitelist()
+def verify_payment(razorpay_order_id, razorpay_payment_id, razorpay_signature):
+    key_secret = frappe.conf.get("razorpay_key_secret")
+
+    generated_signature = hmac.new(
+        key_secret.encode(),
+        f"{razorpay_order_id}|{razorpay_payment_id}".encode(),
+        hashlib.sha256
+    ).hexdigest()
+
+    if not hmac.compare_digest(generated_signature, razorpay_signature):
+        frappe.throw("Payment verification failed. Signature mismatch.")
+
+    payment = frappe.get_doc("Cafe Payment", {"razorpay_order_id": razorpay_order_id})
+
+    if payment.customer_session and payment.status != "Paid":
+        session = frappe.get_doc("Customer Session", payment.customer_session)
+        if session.customer != frappe.session.user:
+            frappe.throw("You can only verify payments for your own session.")
+
+    _finalize_payment(razorpay_order_id, razorpay_payment_id)
 
     return {"status": "success", "message": "Payment verified successfully."}
+
+
+@frappe.whitelist(allow_guest=True)
+def razorpay_webhook():
+    """Server-to-server payment confirmation from Razorpay.
+
+    Registered in the Razorpay dashboard against this URL. Doesn't rely on
+    the customer's browser at all, so it still marks a session Paid even if
+    they close the tab right after paying and before verify_payment fires.
+    """
+    webhook_secret = frappe.conf.get("razorpay_webhook_secret")
+    if not webhook_secret:
+        frappe.local.response.http_status_code = 500
+        return {"status": "webhook not configured"}
+
+    raw_body = frappe.request.get_data()
+    received_signature = frappe.get_request_header("X-Razorpay-Signature")
+
+    generated_signature = hmac.new(
+        webhook_secret.encode(),
+        raw_body,
+        hashlib.sha256
+    ).hexdigest()
+
+    if not received_signature or not hmac.compare_digest(generated_signature, received_signature):
+        frappe.local.response.http_status_code = 400
+        return {"status": "invalid signature"}
+
+    payload = json.loads(raw_body)
+    event = payload.get("event")
+
+    if event in ("payment.captured", "order.paid"):
+        payment_entity = payload.get("payload", {}).get("payment", {}).get("entity", {})
+        order_id = payment_entity.get("order_id")
+        payment_id = payment_entity.get("id")
+
+        if order_id and payment_id and frappe.db.exists("Cafe Payment", {"razorpay_order_id": order_id}):
+            _finalize_payment(order_id, payment_id)
+
+    frappe.local.response.http_status_code = 200
+    return {"status": "ok"}
 
 
 def require_staff():
